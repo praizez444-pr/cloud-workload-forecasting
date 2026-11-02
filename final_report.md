@@ -1,255 +1,248 @@
 # Cloud Workload Forecasting and Analysis
 
-## 1. 
-Summary
+## 1. Executive Summary
 
-This project studies cloud machine CPU usage by using a selected part of the Azure Public Dataset V2.
+This project analyses cloud virtual machine (VM) CPU utilization using a curated subset of Azure Public Dataset V2.
 
-The goal is to learn about usage and predict the number of active virtual machines and overall CPU usage for the next two hours.
+The objective is to understand historical workload behaviour and forecast two workload indicators over the next two hours:
 
-The data has 1,340,000 CPU readings from 10,000 machines at 134 different times. These times are five minutes apart.
+- Number of active virtual machines.
+- Aggregate CPU utilization.
 
-Three ways to predict were tested: using the value a 30-minute average and a simple exponential smoothing method.
+The dataset contains 1,340,000 CPU readings from 10,000 virtual machines across 134 timestamps, recorded at five-minute intervals.
 
-The final version uses the value for active VM count and the 30-minute average for overall CPU usage.
+Three forecasting methods were evaluated: persistence, a 30-minute moving average, and Simple Exponential Smoothing (SES).
+
+Based on chronological validation results, SES achieved the lowest forecasting errors and was selected for the final aggregate CPU utilization forecast. Persistence was used for active VM count.
+
+The analysis also found that relatively low aggregate CPU utilization can coexist with high utilization on individual virtual machines. This highlights the importance of monitoring both aggregate and VM-level workload behaviour.
 
 ## 2. Dataset Understanding and Preparation
 
 ### 2.1 Dataset Description
 
-The project uses two source files:
+The project uses two source files from a curated subset of Azure Public Dataset V2:
 
-- vm_cpu_readings.csv.gz: CPU usage data for each machine.
+- `vm_cpu_readings.csv.gz`: CPU utilization readings for individual virtual machines.
+- `vm_metadata.csv.gz`: Information about the virtual machines.
 
-- vm_metadata.csv.gz: Information about each virtual machine.
+The CPU dataset contains 1,340,000 rows and five columns, while the metadata dataset contains 10,000 rows and eleven columns.
 
-The CPU data has 1,340,000 rows and five columns. The metadata data has 10,000 rows and eleven columns.
-
-Each virtual machine has 134 CPU readings with timestamp that is 300 seconds (5 minutes) apart.
+Each virtual machine has 134 CPU observations recorded at 300-second (five-minute) intervals.
 
 ### 2.2 Data Quality Checks
 
-The following checks were done:
+The following checks were performed:
 
 - Checked for missing values.
+- Checked for duplicate records.
+- Verified the number of unique timestamps.
+- Checked that timestamps were five minutes apart.
+- Checked for duplicate VM and timestamp combinations.
+- Compared VM identifiers across both datasets.
 
-- Checked for duplicated records.
+No missing values or duplicate records were found. All 10,000 VM identifiers in the CPU dataset matched the metadata records.
 
-- Made sure the number of unique times was correct.
+### 2.3 Construction of Target Variables
 
-- Checked that the time difference was five minutes.
-
-- Checked for duplicate virtual machine and time combinations.
-
-- Compared the machine IDs in both datasets.
-
-No missing data or duplicates were found. All 10,000 virtual machine IDs in the CPU dataset matched the metadata records.
-
-### 2.3 Construction of the Target Variable 
-
-The data was grouped by time to create two target variables:
+The VM-level CPU readings were grouped by timestamp to construct two target variables.
 
 **Active VM Count:** The number of distinct virtual machines with a CPU reading at each timestamp.
 
-**Aggregate CPU Utilization:** The average of CPU readings for all machines at each timestamp.
+**Aggregate CPU Utilization:** The arithmetic mean of the VM-level average CPU utilization readings at each timestamp.
 
-The final data has 134 observations.
-
-The active VM count remained constant at 10,000 during the time period.
+The aggregation produced 134 observations. The active VM count remained constant at 10,000 throughout the observed period.
 
 ## 3. Exploratory Data Analysis
 
 ### 3.1 Aggregate CPU Utilization
 
-The development period had 110 observations.
+The development period contained 110 observations.
 
-Statistics for CPU usage were:
+The descriptive statistics were:
 
 | Statistic | Value |
 |---|---:|
 | Mean | 9.4141% |
-Standard deviation | 0.1936 |
+| Standard deviation | 0.1936 |
 | Minimum | 9.1116% |
 | Median | 9.3781% |
-| Maximum | 9.9122%
+| Maximum | 9.9122% |
 
-The CPU usage was mostly around 9.4%.
+Aggregate CPU utilization remained relatively stable around 9.4%.
 
-There was an increase around timestamp 16,500 to 21,000 seconds then it declined.
+A temporary increase occurred between approximately 16,500 and 21,000 seconds, followed by a decline.
 
-No clear repeating pattern was found in the available data.
+No clear repeating pattern was identified in the available observation period.
 
 ### 3.2 VM-Level Utilization and High-Load Analysis
 
-Even though overall CPU utilization was low,  individual VMs readings showed a wider distribution.
+Although aggregate CPU utilization was relatively low, individual VM readings showed a much wider distribution.
 
-In the dataset the highest average CPU usage for a single VM was about 99.95%.
+Across the dataset, the highest observed VM-level average CPU utilization was approximately 99.95%.
 
-In the development period:
+During the development period:
 
-- On average, 127 VMs recorded CPU utilization above 80%.
+- An average of approximately 127 VMs recorded CPU utilization above 80%.
+- An average of approximately 88 VMs recorded CPU utilization above 90%.
+- An average of approximately 57 VMs recorded CPU utilization above 95%.
 
-- On average 88 VMs recorded CPU utilization above 90%.
+The highest number of VMs above 80% utilization was 146, recorded at timestamp 17,400 seconds.
 
-- On average 57 VMs recorded CPU utilization above 95%.
+These findings show that low aggregate CPU utilization does not necessarily mean that every virtual machine has sufficient resource headroom.
 
-The most VMs above 80% was 146 at timestamp 17,400 seconds.
-
-This shows that low overall CPU usage does not mean all VMs have sufficient headroom.
+The high-load counts are based on VM-level average CPU readings and do not, by themselves, establish sustained saturation.
 
 ## 4. Forecasting Methodology
 
 ### 4.1 Chronological Data Split
 
-The 134 aggregate observations were split into:
+The 134 aggregate observations were divided into:
 
-- Development period: 110 observations.
+- Development period: First 110 observations.
+- Holdout period: Final 24 observations.
 
-- Holdout period: final 24 observations.
+Since each observation represents a five-minute interval, the 24-step forecast horizon covers two hours.
 
-The holdout period is two hours because each observation is five minutes apart.
+The holdout period was excluded from model fitting and the development-period validation procedure.
 
 ### 4.2 Forecasting Approaches
 
-Three methods were compared.
+Three forecasting methods were evaluated.
 
 **Persistence Forecasting**
 
-This method uses the observed value as the forecast for future predictions.
+Persistence uses the most recently observed value as the forecast for future observations.
 
-It was used for active VM count since the count stayed at 10,000.
+It was used as the baseline for active VM count because the observed count remained constant at 10,000.
 
 **30-Minute Moving Average**
 
-This method calculates the mean of the six recent observations and uses it to predict CPU utilization for the next 24 steps.
+This method calculates the mean of the six most recent observations and uses it as the forecast for future CPU utilization.
 
-**Simple Exponential Smoothing**
+**Simple Exponential Smoothing (SES)**
 
-This method assigns greater weight to recent data while keeping information from earlier data.
+SES estimates future values by assigning exponentially decreasing weights to older observations. The smoothing parameters are estimated during model fitting.
 
 ### 4.3 Time-Aware Validation
 
-Three expanding window tests were done:
+Three expanding-window validation experiments were performed using only the development period:
 
-- First window: 80 historical observations, followed by 10 validation observations.
+- First window: 80 historical observations followed by 10 validation observations.
+- Second window: 90 historical observations followed by 10 validation observations.
+- Third window: 100 historical observations followed by 10 validation observations.
 
-- Second window: 90 historical observations, followed by 10 validation observations.
+This approach preserves chronological order and avoids using future observations to predict earlier ones.
 
-- Third window: 100 historical observations, followed by 10 validation observations.
+The models were evaluated using:
 
-The evaluation metrics used were Mean Absolute Error (MAE) and Root Mean Squared Error (RMSE). Lower values indicates better forecast accuracy.
+- Mean Absolute Error (MAE).
+- Root Mean Squared Error (RMSE).
+
+Lower MAE and RMSE values indicate better forecast accuracy.
 
 ### 4.4 Validation Results
 
-The results from 30 validation observations were:
+The pooled results across the 30 validation observations were:
 
 | Forecasting Method | MAE | RMSE |
 |---|---:|---:|
-| Persistence | 0.095084 0.116737 |
+| Persistence | 0.095084 | 0.116737 |
 | 30-Minute Moving Average | 0.081640 | 0.099295 |
-| Simple Exponential Smoothing | 0.075040 | 0.094381 |
+| Simple Exponential Smoothing | **0.075040** | **0.094381** |
 
-Simple Exponential Smoothing had the lowest validation errors.
+SES achieved the lowest validation errors.
 
-Compared to persistence SES had 21.1% lower MAE and 19.2% lower RMSE.
+Compared with persistence, SES reduced MAE by approximately 21.1% and RMSE by approximately 19.2%.
 
-The moving average also did better than persistence with 14.1% lower MAE and 15.0% lower RMSE.
+The moving average also outperformed persistence, reducing MAE by approximately 14.1% and RMSE by approximately 15.0%.
 
-### 4.5 Holdout Forecast Evaluation
+Based on these development-period validation results, SES was selected for the final aggregate CPU utilization forecast.
 
-The final implementation used persistence for VM count and the 30-minute moving average for aggregate CPU utilization.
+### 4.5 Final Holdout Forecast
 
-The moving average forecast produced:
+The final implementation uses:
+
+- Persistence for active VM count.
+- Simple Exponential Smoothing for aggregate CPU utilization.
+
+The SES model was fitted using all 110 development observations and used to forecast the next 24 timestamps.
+
+The previously calculated holdout errors for SES were:
 
 | Metric | Result |
 |---|---:|
-| CPU MAE | 0.133565 |
-| CPU RMSE | 0.171289 |
-| CPU NRMSE | 1.85% |
-| Active VM Count MAE 0 |
-Active VM Count RMSE | 0 |
+| CPU MAE | 0.145371 |
+| CPU RMSE | 0.183428 |
+| Active VM Count MAE | 0 |
+| Active VM Count RMSE | 0 |
 
-The actual mean aggregate CPU utilization during the holdout period was approximately 9.2690% while the forecast average was about 9.1909%.
+The active VM count forecast matched the observed holdout count.
 
-The positive error of about 0.0781 percentage points shows the moving average slightly underestimated the aggregate CPU utilization.
-
-Even though SES did best during validation, the moving average had lower errors in the holdout comparison:
-
-- Moving Average MAE: 0.133565; RMSE: 0.171289.
-
-- SES MAE: 0.145371; RMSE: 0.183428.
-
-**Evaluation limitation:** Both methods were compared after their forecasts were made.
+**Holdout evaluation limitation:** During an earlier development iteration, the holdout errors of the moving average and SES were both inspected, and the moving average initially appeared preferable. This was a post-hoc comparison and means the holdout was not completely untouched throughout the project. The final implementation has now been aligned with the model selected using development-period validation only. The holdout comparison should therefore not be treated as an independent model-selection assessment.
 
 ## 5. Operational Analysis and Recommendations
 
-### 5.1 Capacity and Headroom
+### 5.1 Capacity and Resource Headroom
 
-The overall CPU utilization was low, averaging about 9.4% during the development period.
+Aggregate CPU utilization averaged approximately 9.4% during the development period.
 
-However, VM-level analysis showed that some machines redorded utilizaton above 90% and 95%
+However, VM-level analysis identified individual machines with high CPU utilization.
 
-Recommended operational actions are:
+Recommended operational actions include:
 
-1. Watch CPU utilization at each individual VM level.
+1. Monitor CPU utilization at individual VM level.
+2. Set alerts for sustained high CPU utilization.
+3. Investigate machines that repeatedly record utilization above 80%.
+4. Review workload distribution and identify possible resource bottlenecks.
+5. Maintain sufficient capacity headroom based on individual workload behaviour and service requirements.
 
-2. Set up alerts for sustained high CPU utilization.
-
-3. Look into machines taht repeatedly records utilization above 80%.
-
-4. Check workload distribution and find issues with resources.
-
-5. Maintain appropriate capacity headroom based on individual VM behaviour and service requirements.
-
-A fixed capacity reduction is not recommended from aggregate CPU averages alone.
+A fixed capacity reduction should not be recommended using aggregate CPU averages alone.
 
 ### 5.2 Forecasting Improvements
 
 Possible future improvements include:
 
-- Use longer data to check for daily or weekly patterns.
-
-- Forcasting individual VM workloads or workload groups.
+- Using longer observation periods to investigate daily and weekly workload patterns.
+- Forecasting individual VM workloads or groups of similar workloads.
+- Evaluating additional forecasting models.
+- Incorporating other workload indicators and VM metadata where appropriate.
 
 ## 6. Limitations
 
-The analysis has some issues:
+The analysis has several limitations:
 
-- The development period is nine hours, which is not enough to see longer patterns.
-
-- The moving average produces a constant forecast across the 24-steps.
-
-- Aggregate CPU utilization can hide high utilization on individual virtual machines.
-
-- The dataset is a selected part and may not show all behaviors in a real cloud.
-
-- The post-hoc holdout comparison is not an independent final model-selection assessment.
+- The development period covers approximately nine hours, which is insufficient to identify longer-term workload patterns reliably.
+- The dataset is a curated subset and may not represent all cloud workload behaviours.
+- Aggregate CPU utilization can conceal high utilization on individual virtual machines.
+- Persistence assumes the most recent active VM count remains representative of future observations.
+- SES assumes that a smoothed level provides a useful basis for the forecast and does not explicitly model trend or seasonality.
+- The earlier post-hoc holdout comparison limits the independence of the final holdout assessment.
 
 ## 7. Conclusion
 
-This project shows a way to study cloud workloads and predict them for a short-term.
+This project demonstrates a practical approach to analysing cloud VM workloads and generating short-term forecasts using time-series methods.
 
-The final implementaion uses persistence for VM count and the 30-minute moving average for aggregate CPU utilization.
+Persistence was used to forecast active VM count, while Simple Exponential Smoothing was selected for aggregate CPU utilization based on its performance during chronological development-period validation.
 
-The analysis also highlights an important finding: relatively low aggregate CPU utilization can coexist with high utilization on individual virtual machines.
+The analysis also highlights an important operational finding: relatively low aggregate CPU utilization can coexist with high utilization on individual virtual machines.
 
-So cloud planning should combine both the predictions and the VM-level monitoring so that sufficient resourde headroom will be appropriated
+Cloud resource planning should therefore combine aggregate workload forecasts with VM-level monitoring to maintain appropriate resource headroom.
 
 ## 8. Reproducibility
 
-Install the dependencies:
+Install the required dependencies:
 
-pip install -r requirements.txt
+    pip install -r requirements.txt
 
-Run the forecasting code from the project root:
+Run the forecasting script from the project root:
 
-python src/forecast.py
+    python src/forecast.py
 
-This scripts generates predictions.csv with 24 forecasted observations, including:
+The script generates `predictions.csv` containing 24 forecast observations with the following columns:
 
-- timestamp
+- `timestamp`
+- `active_vm_count`
+- `aggregate_cpu_utilization`
 
-- active_vm_count
-
-- aggregate_cpu_utilization
-
+The script also performs basic checks on the generated predictions before saving the output.

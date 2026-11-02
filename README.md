@@ -18,7 +18,7 @@ The project uses a curated subset of Azure Public Dataset V2.
 - 1,340,000 VM-level CPU records.
 
 ## Methodology
-
+The project follows these steps:
 1. Data loading and quality checks.
 2. Aggregation of VM-level CPU readings by timestamp.
 3. Exploratory data analysis.
@@ -27,6 +27,7 @@ The project uses a curated subset of Azure Public Dataset V2.
 6. Forecast generation and evaluation.
 
 The first 110 timestamps are used for development, while the final 24 timestamps form the forecast horizon.
+The holdout observations are excluded from model fitting and model selection.
 
 ## Forecasting Methods
 
@@ -36,14 +37,11 @@ The following methods were compared:
 - 30-minute moving average.
 - Simple Exponential Smoothing.
 
-The final forecasting implementation uses:
-- Persistence for active VM count.
-- A 30-minute moving average for aggregate CPU utilization.
+Simple Exponential Smoothing achieved the lowest validation MAE and RMSE and was therefore selected for the final aggregate CPU utilization forecast.
 
 
 ## Project Structure
 
-```text
 cloud-workload-forecasting/
 ├── challenge_data/
 ├── notebooks/
@@ -51,5 +49,8 @@ cloud-workload-forecasting/
 ├── src/
 │   └── forecast.py
 ├── predictions.csv
+├── final_report.md
+└── final_report.pdf
 ├── requirements.txt
-└── README.md
+├── .gitignore
+├── README.md
